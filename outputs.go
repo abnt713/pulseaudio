@@ -12,6 +12,72 @@ type Output struct {
 	Available bool
 }
 
+// SetAsMain sets this output as the main one.
+func (o Output) SetAsMain() error {
+	c := o.client
+	cards, err := c.Cards()
+	if err != nil {
+		return err
+	}
+
+	if o.CardID == "all" && o.PortID == "none" {
+		return nil
+	}
+
+	var found bool
+	var selectedCard Card
+	for _, selectedCard = range cards {
+		if selectedCard.Name == o.CardID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("PulseAudio error: card %s is no longer available", o.CardID)
+	}
+
+	found = false
+	var port port
+	for _, port = range selectedCard.Ports {
+		if port.Name == o.PortID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("PulseAudio error: port %s is no longer available", o.PortID)
+	}
+
+	bestProfile := port.Profiles[0]
+	for _, profile := range port.Profiles {
+		if profile.Priority > bestProfile.Priority {
+			bestProfile = profile
+		}
+	}
+	err = c.SetCardProfile(selectedCard.Index, bestProfile.Name)
+	if err != nil {
+		return err
+	}
+	sinks, err := c.sinks()
+	if err != nil {
+		return err
+	}
+	s, err := c.ServerInfo()
+	if err != nil {
+		return err
+	}
+	for _, sink := range sinks {
+		if sink.CardIndex != selectedCard.Index {
+			continue
+		}
+		if s.DefaultSink == sink.Name {
+			continue
+		}
+		return c.setDefaultSink(sink.Name)
+	}
+	return nil
+}
+
 // Activate sets this output as the main one.
 func (o Output) Activate() error {
 	c := o.client
